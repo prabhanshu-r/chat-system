@@ -1,78 +1,22 @@
-const socket = io();
+const API_BASE = (window.CHAT_CONFIG?.apiUrl || window.location.origin).replace(/\/+$/, "");
+const socket = io(API_BASE, { autoConnect: false });
 
-const conversations = [
-  {
-    id: "sarah",
-    name: "Sarah Connor",
-    initials: "SC",
-    color: "avatar-rose",
-    type: "direct",
-    presence: "Online",
-    role: "Product designer",
-    preview: "Could you check the mobile spacing too?",
-    unread: 1,
-    about: "Designing a calmer, more useful way for teams to work together.",
-    description: "A private conversation with Sarah about product design and the next release.",
-    members: "Just you and Sarah",
-  },
-  {
-    id: "design-team",
-    name: "Design Team",
-    initials: "DT",
-    color: "avatar-teal avatar-group",
-    type: "group",
-    presence: "8 members",
-    role: "Project group",
-    preview: "Maya: The new concepts are ready to review",
-    unread: 3,
-    about: "A shared space for sketches, feedback, and design decisions.",
-    description: "The team workspace for reviewing concepts and sharing product updates.",
-    members: "You, Maya, Sarah, Jonah, and 4 others",
-  },
-  {
-    id: "katia",
-    name: "Katia Mavin",
-    initials: "KM",
-    color: "avatar-violet",
-    type: "direct",
-    presence: "Last seen 10 minutes ago",
-    role: "Frontend developer",
-    preview: "The new chat layout is looking great!",
-    unread: 0,
-    about: "Frontend developer who loves thoughtful details and tidy interfaces.",
-    description: "A private conversation with Katia.",
-    members: "Just you and Katia",
-  },
-  {
-    id: "rona",
-    name: "Rona Klein",
-    initials: "RK",
-    color: "avatar-gold",
-    type: "direct",
-    presence: "Online",
-    role: "Researcher",
-    preview: "I added the interview notes to the folder.",
-    unread: 0,
-    about: "Turning user feedback into better product experiences.",
-    description: "A private conversation with Rona.",
-    members: "Just you and Rona",
-  },
-  {
-    id: "leo",
-    name: "Leo Park",
-    initials: "LP",
-    color: "avatar-blue",
-    type: "direct",
-    presence: "Away",
-    role: "Engineer",
-    preview: "Can we sync on the API tomorrow?",
-    unread: 0,
-    about: "Building reliable tools for creative teams.",
-    description: "A private conversation with Leo.",
-    members: "Just you and Leo",
-  },
-];
+const state = {
+  token: sessionStorage.getItem("orbit-chat-token"),
+  user: null,
+  conversations: [],
+  activeConversationId: null,
+  activeFilter: "all",
+  search: "",
+  newestFirst: true,
+  authMode: "login",
+  onlineUsers: new Set(),
+  selectedGroupUsers: new Set(),
+};
 
+const authScreen = document.querySelector("#auth-screen");
+const authForm = document.querySelector("#auth-form");
+const authError = document.querySelector("#auth-error");
 const appShell = document.querySelector("#app-shell");
 const conversationList = document.querySelector("#conversation-list");
 const chatSearch = document.querySelector("#chat-search");
@@ -80,34 +24,52 @@ const messageArea = document.querySelector("#message-area");
 const messageList = document.querySelector("#message-list");
 const messageForm = document.querySelector("#message-form");
 const messageInput = document.querySelector("#message-input");
+const composerWrap = document.querySelector("#composer-wrap");
 const connectionStatus = document.querySelector("#connection-status");
-const profileDialog = document.querySelector("#profile-dialog");
-const profileForm = document.querySelector("#profile-form");
-const displayNameInput = document.querySelector("#display-name-input");
+const conversationDialog = document.querySelector("#conversation-dialog");
+const conversationError = document.querySelector("#conversation-error");
+const userResults = document.querySelector("#user-results");
+const groupUserResults = document.querySelector("#group-user-results");
 const toast = document.querySelector("#toast");
 
-let activeConversationId = "sarah";
-let activeFilter = "all";
-let sortNewestFirst = true;
+let callController;
 let toastTimeout;
+let userSearchSequence = 0;
+const avatarColors = ["avatar-rose", "avatar-teal", "avatar-violet", "avatar-gold", "avatar-blue"];
 
-function getOrCreateUserId() {
-  let userId = localStorage.getItem("orbit-chat-user-id");
-  if (!userId) {
-    userId =
-      typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    localStorage.setItem("orbit-chat-user-id", userId);
-  }
-  return userId;
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.add("is-visible");
+  window.clearTimeout(toastTimeout);
+  toastTimeout = window.setTimeout(() => toast.classList.remove("is-visible"), 2800);
 }
 
-const currentUserId = getOrCreateUserId();
-let currentUserName = localStorage.getItem("orbit-chat-display-name") || "Alex Morgan";
+async function api(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (state.token) headers.set("Authorization", `Bearer ${state.token}`);
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch {
+    throw new Error("Could not reach the chat server. Check your connection and try again.");
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("The chat server returned an unreadable response.");
+  }
+  if (!response.ok) throw new Error(data.error || "The request could not be completed.");
+  return data;
+}
 
 function getInitials(name) {
-  return name
+  return String(name || "")
     .trim()
     .split(/\s+/)
     .slice(0, 2)
@@ -116,23 +78,94 @@ function getInitials(name) {
     .toUpperCase();
 }
 
-function showToast(message) {
-  toast.textContent = message;
-  toast.classList.add("is-visible");
-  window.clearTimeout(toastTimeout);
-  toastTimeout = window.setTimeout(() => {
-    toast.classList.remove("is-visible");
-  }, 2600);
+function getAvatarColor(id, isGroup = false) {
+  if (isGroup) return "avatar-teal avatar-group";
+  let hash = 0;
+  for (const character of String(id)) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return avatarColors[hash % avatarColors.length];
 }
 
 function formatTime(dateValue) {
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function getActiveConversation() {
-  return conversations.find((conversation) => conversation.id === activeConversationId);
+function updateConnectionStatus(connected) {
+  connectionStatus.classList.toggle("is-offline", !connected);
+  connectionStatus.lastChild.textContent = connected ? " Connected" : " Reconnecting...";
+}
+
+function setAuthMode(mode) {
+  state.authMode = mode;
+  const isRegister = mode === "register";
+  const nameField = document.querySelector("#auth-name-field");
+  nameField.hidden = !isRegister;
+  document.querySelector("#auth-name").required = isRegister;
+  document.querySelector("#auth-password").autocomplete = isRegister ? "new-password" : "current-password";
+  document.querySelector("#auth-title").textContent = isRegister ? "Create your account" : "Welcome back";
+  document.querySelector("#auth-description").textContent = isRegister
+    ? "Use your name, email, and a password to get started."
+    : "Sign in to pick up where you left off.";
+  document.querySelector("#auth-submit").textContent = isRegister ? "Create account" : "Sign in";
+  document.querySelector("#auth-switch-label").textContent = isRegister
+    ? "Already have an account?"
+    : "New to Orbit Chat?";
+  document.querySelector("#auth-toggle").textContent = isRegister ? "Sign in" : "Create an account";
+  authError.textContent = "";
+}
+
+function showAuth() {
+  appShell.hidden = true;
+  authScreen.hidden = false;
+  setAuthMode("login");
+}
+
+function saveAuth(result) {
+  state.token = result.token;
+  state.user = result.user;
+  sessionStorage.setItem("orbit-chat-token", result.token);
+  document.querySelector("#auth-password").value = "";
+  document.querySelector("#auth-name").value = "";
+}
+
+async function signOut() {
+  callController?.endCurrentCall("signed out");
+  socket.disconnect();
+  state.token = null;
+  state.user = null;
+  state.conversations = [];
+  state.activeConversationId = null;
+  state.onlineUsers.clear();
+  sessionStorage.removeItem("orbit-chat-token");
+  messageList.replaceChildren();
+  showAuth();
+}
+
+function updateProfile() {
+  const initials = getInitials(state.user.name) || "?";
+  document.querySelector("#profile-name").textContent = state.user.name;
+  document.querySelector("#profile-email").textContent = state.user.email;
+  document.querySelector("#profile-avatar").textContent = initials;
+  document.querySelector("#rail-profile").textContent = initials;
+}
+
+function visibleConversations() {
+  const query = state.search.trim().toLowerCase();
+  let visible = state.conversations.filter((conversation) => {
+    const matchesText =
+      !query ||
+      conversation.name.toLowerCase().includes(query) ||
+      conversation.preview.toLowerCase().includes(query);
+    const matchesFilter = state.activeFilter === "all" || conversation.isGroup;
+    return matchesText && matchesFilter;
+  });
+  if (!state.newestFirst) visible = [...visible].reverse();
+  return visible;
 }
 
 function createAvatar(initials, color, extraClass = "") {
@@ -142,41 +175,25 @@ function createAvatar(initials, color, extraClass = "") {
   return avatar;
 }
 
-function getVisibleConversations() {
-  const query = chatSearch.value.trim().toLowerCase();
-  let visible = conversations.filter((conversation) => {
-    const matchesQuery =
-      !query ||
-      conversation.name.toLowerCase().includes(query) ||
-      conversation.preview.toLowerCase().includes(query);
-    const matchesFilter =
-      activeFilter === "all" ||
-      (activeFilter === "unread" && conversation.unread > 0) ||
-      (activeFilter === "groups" && conversation.type === "group");
-    return matchesQuery && matchesFilter;
-  });
-
-  if (!sortNewestFirst) visible = [...visible].reverse();
-  return visible;
-}
-
 function renderConversations() {
   conversationList.replaceChildren();
-  const visible = getVisibleConversations();
-
+  const visible = visibleConversations();
   if (visible.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-list";
-    empty.textContent = "No conversations match. Try another search or filter.";
+    empty.textContent =
+      state.conversations.length === 0
+        ? "No chats yet. Start a direct message or create a group."
+        : "No conversations match your search.";
     conversationList.append(empty);
     return;
   }
 
-  visible.forEach((conversation) => {
+  for (const conversation of visible) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `conversation-item${conversation.id === activeConversationId ? " is-active" : ""}`;
-    button.setAttribute("aria-pressed", String(conversation.id === activeConversationId));
+    button.className = `conversation-item${conversation.id === state.activeConversationId ? " is-active" : ""}`;
+    button.setAttribute("aria-pressed", String(conversation.id === state.activeConversationId));
 
     const avatar = createAvatar(conversation.initials, conversation.color, "conversation-avatar");
     const copy = document.createElement("span");
@@ -195,61 +212,81 @@ function renderConversations() {
     bottomLine.className = "conversation-bottomline";
     const preview = document.createElement("span");
     preview.className = "conversation-preview";
-    preview.textContent = conversation.preview;
+    preview.textContent = conversation.preview || "No messages yet";
     bottomLine.append(preview);
-
-    if (conversation.unread > 0) {
-      const unread = document.createElement("span");
-      unread.className = "unread-count";
-      unread.textContent = String(conversation.unread);
-      unread.setAttribute("aria-label", `${conversation.unread} unread messages`);
-      bottomLine.append(unread);
-    }
 
     copy.append(topLine, bottomLine);
     button.append(avatar, copy);
     button.addEventListener("click", () => selectConversation(conversation.id));
     conversationList.append(button);
-  });
+  }
 }
 
-function updateProfile() {
-  const initials = getInitials(currentUserName) || "AM";
-  document.querySelector("#profile-name").textContent = currentUserName;
-  document.querySelector("#profile-avatar").textContent = initials;
-  document.querySelector("#rail-profile").textContent = initials;
+function setPresence(userId, online) {
+  if (online) state.onlineUsers.add(userId);
+  else state.onlineUsers.delete(userId);
+
+  for (const conversation of state.conversations) {
+    if (conversation.otherUserId === userId) {
+      conversation.presence = online ? "Online" : "Offline";
+    }
+  }
+  if (getActiveConversation()?.otherUserId === userId) {
+    updateConversationDetails(getActiveConversation());
+  }
+  renderConversations();
 }
 
 function updateConversationDetails(conversation) {
+  const direct = !conversation.isGroup;
   document.querySelector("#header-name").textContent = conversation.name;
   document.querySelector("#header-presence").replaceChildren();
-  const isOnline = conversation.presence === "Online";
-  if (isOnline) {
+  if (conversation.presence === "Online") {
     const dot = document.createElement("span");
     dot.className = "presence-dot";
     document.querySelector("#header-presence").append(dot);
   }
   document.querySelector("#header-presence").append(document.createTextNode(conversation.presence));
 
-  const headerAvatar = document.querySelector("#header-avatar");
-  headerAvatar.className = `avatar header-avatar ${conversation.color}`;
-  headerAvatar.textContent = conversation.initials;
+  const initials = getInitials(conversation.name);
+  const avatarColor = conversation.color;
+  for (const [selector, extraClass] of [
+    ["#header-avatar", "header-avatar"],
+    ["#details-avatar", "contact-avatar"],
+  ]) {
+    const avatar = document.querySelector(selector);
+    avatar.className = `avatar ${extraClass} ${avatarColor}`;
+    avatar.textContent = initials;
+  }
 
-  const detailsAvatar = document.querySelector("#details-avatar");
-  detailsAvatar.className = `avatar contact-avatar ${conversation.color}`;
-  detailsAvatar.textContent = conversation.initials;
   document.querySelector("#details-name").textContent = conversation.name;
-  document.querySelector("#details-role").textContent = conversation.role;
+  document.querySelector("#details-role").textContent = direct ? "Orbit Chat member" : "Group conversation";
   document.querySelector("#details-presence").textContent = conversation.presence;
-  document.querySelector("#details-about").textContent = conversation.about;
-  document.querySelector("#details-description").textContent = conversation.description;
-  document.querySelector("#details-members").textContent = conversation.members;
+  document.querySelector("#details-status-dot").hidden = !direct || conversation.presence !== "Online";
+  document.querySelector("#details-about").textContent = direct
+    ? "A private conversation between you and this member."
+    : "A shared space for messages between group members.";
+  document.querySelector("#details-description").textContent = conversation.isGroup
+    ? `Group chat · ${conversation.memberCount} members`
+    : "Private one-to-one conversation";
+  document.querySelector("#details-members").textContent = direct
+    ? `You and ${conversation.name}`
+    : `${conversation.memberCount} members`;
+
+  document.querySelector("#voice-call-button").disabled = !direct;
+  document.querySelector("#video-call-button").disabled = !direct;
+  document.querySelector("#details-toggle").disabled = false;
+}
+
+function getActiveConversation() {
+  return state.conversations.find((conversation) => conversation.id === state.activeConversationId) || null;
 }
 
 function renderMessage(message) {
-  const conversation = conversations.find((item) => item.id === message.chatId);
-  const isOwnMessage =
-    message.senderId === currentUserId || message.senderId === "demo-user";
+  const conversation = state.conversations.find(
+    (item) => item.id === message.conversationId,
+  );
+  const isOwnMessage = message.senderId === state.user.id;
 
   const row = document.createElement("article");
   row.className = `message-row${isOwnMessage ? " is-sent" : ""}`;
@@ -257,7 +294,7 @@ function renderMessage(message) {
   if (!isOwnMessage) {
     row.append(
       createAvatar(
-        getInitials(message.senderName || conversation?.name || "Guest"),
+        getInitials(message.senderName || "Member"),
         conversation?.color || "avatar-blue",
         "message-avatar",
       ),
@@ -266,11 +303,10 @@ function renderMessage(message) {
 
   const stack = document.createElement("div");
   stack.className = "message-stack";
-
-  if (!isOwnMessage && conversation?.type === "group") {
+  if (!isOwnMessage && conversation?.isGroup) {
     const author = document.createElement("span");
     author.className = "message-author";
-    author.textContent = message.senderName || "Guest";
+    author.textContent = message.senderName;
     stack.append(author);
   }
 
@@ -286,7 +322,6 @@ function renderMessage(message) {
   time.dateTime = message.createdAt;
   time.textContent = formatTime(message.createdAt);
   meta.append(time);
-
   if (isOwnMessage) {
     const check = document.createElement("span");
     check.className = "message-check";
@@ -301,84 +336,222 @@ function renderMessage(message) {
   messageList.append(row);
 }
 
-function selectConversation(conversationId) {
-  const conversation = conversations.find((item) => item.id === conversationId);
-  if (!conversation) return;
-
-  activeConversationId = conversationId;
-  conversation.unread = 0;
+function showSelectedConversation(conversation) {
+  state.activeConversationId = conversation.id;
   messageList.replaceChildren();
+  document.querySelector("#message-date").hidden = false;
+  document.querySelector("#welcome-empty").hidden = true;
+  composerWrap.hidden = false;
   updateConversationDetails(conversation);
   renderConversations();
   appShell.classList.add("chat-open");
-  socket.emit("join_chat", conversationId);
-}
 
-function updateConnectionStatus(connected) {
-  connectionStatus.classList.toggle("is-offline", !connected);
-  connectionStatus.lastChild.textContent = connected ? " Connected" : " Reconnecting...";
-}
-
-function appendMessage(message) {
-  if (!message || message.chatId !== activeConversationId) return;
-  renderMessage(message);
-  messageArea.scrollTop = messageArea.scrollHeight;
-
-  const conversation = conversations.find((item) => item.id === message.chatId);
-  if (conversation) {
-    conversation.preview = message.text;
-    conversation.lastAt = message.createdAt;
-    renderConversations();
-  }
-}
-
-document.querySelectorAll(".filter-tab").forEach((button) => {
-  button.addEventListener("click", () => {
-    activeFilter = button.dataset.filter;
-    document.querySelectorAll(".filter-tab").forEach((tab) => {
-      tab.classList.toggle("is-active", tab === button);
-    });
-    renderConversations();
-  });
-});
-
-chatSearch.addEventListener("input", renderConversations);
-document.querySelector("#new-chat-button").addEventListener("click", () => {
-  chatSearch.focus();
-  showToast("Search for a conversation by name.");
-});
-document.querySelector("#sort-button").addEventListener("click", (event) => {
-  sortNewestFirst = !sortNewestFirst;
-  event.currentTarget.textContent = sortNewestFirst ? "Newest" : "Oldest";
-  renderConversations();
-});
-
-document.querySelectorAll("[data-coming-soon]").forEach((button) => {
-  button.addEventListener("click", () => showToast(button.dataset.comingSoon));
-});
-
-document.querySelector("#details-toggle").addEventListener("click", () => {
-  if (window.matchMedia("(max-width: 930px)").matches) {
-    showToast("Conversation details are available on wider screens.");
+  if (!socket.connected) {
+    updateConnectionStatus(false);
     return;
   }
-  appShell.classList.toggle("details-collapsed");
-});
-document.querySelector("#back-to-list").addEventListener("click", () => {
-  appShell.classList.remove("chat-open");
-});
 
-document.querySelector("#emoji-button").addEventListener("click", () => {
-  const start = messageInput.selectionStart;
-  const end = messageInput.selectionEnd;
-  messageInput.setRangeText("🙂", start, end, "end");
-  messageInput.focus();
-});
+  socket.emit("join_chat", conversation.id, (result) => {
+    if (state.activeConversationId !== conversation.id) return;
+    if (!result?.ok) {
+      showToast(result?.error || "Could not open this conversation.");
+      return;
+    }
+    messageList.replaceChildren();
+    result.messages.forEach(renderMessage);
+    const latest = result.messages[result.messages.length - 1];
+    if (latest) {
+      conversation.preview = latest.text;
+      conversation.lastAt = latest.createdAt;
+      renderConversations();
+    }
+    window.requestAnimationFrame(() => {
+      messageArea.scrollTop = messageArea.scrollHeight;
+    });
+  });
+}
 
-messageForm.addEventListener("submit", (event) => {
+function selectConversation(conversationId) {
+  const conversation = state.conversations.find((item) => item.id === conversationId);
+  if (conversation) showSelectedConversation(conversation);
+}
+
+function handleIncomingMessage(message) {
+  const conversation = state.conversations.find((item) => item.id === message.conversationId);
+  if (!conversation) return;
+  conversation.preview = message.text;
+  conversation.lastAt = message.createdAt;
+  if (message.conversationId === state.activeConversationId) {
+    renderMessage(message);
+    messageArea.scrollTop = messageArea.scrollHeight;
+  }
+  renderConversations();
+}
+
+async function loadConversations(preferredId = state.activeConversationId) {
+  const result = await api("/api/conversations");
+  state.conversations = result.conversations.map((conversation) => ({
+    ...conversation,
+    initials: getInitials(conversation.name),
+    color: getAvatarColor(conversation.id, conversation.isGroup),
+    unread: 0,
+  }));
+  for (const conversation of state.conversations) {
+    if (conversation.otherUserId && state.onlineUsers.has(conversation.otherUserId)) {
+      conversation.presence = "Online";
+    }
+  }
+
+  renderConversations();
+  const nextActive = state.conversations.find((item) => item.id === preferredId) || state.conversations[0];
+  if (nextActive) showSelectedConversation(nextActive);
+  else {
+    state.activeConversationId = null;
+    document.querySelector("#header-name").textContent = "Choose a conversation";
+    document.querySelector("#header-presence").textContent = "";
+    document.querySelector("#header-avatar").className = "avatar header-avatar";
+    document.querySelector("#header-avatar").textContent = "";
+    document.querySelector("#message-date").hidden = true;
+    document.querySelector("#welcome-empty").hidden = false;
+    composerWrap.hidden = true;
+    document.querySelector("#voice-call-button").disabled = true;
+    document.querySelector("#video-call-button").disabled = true;
+    document.querySelector("#details-toggle").disabled = true;
+  }
+}
+
+function showUserSearchMessage(container, message) {
+  container.replaceChildren();
+  const empty = document.createElement("p");
+  empty.className = "empty-list";
+  empty.textContent = message;
+  container.append(empty);
+}
+
+function renderUserResults(container, users, onSelect, selectable = false) {
+  container.replaceChildren();
+  if (users.length === 0) {
+    showUserSearchMessage(container, "No matching accounts found.");
+    return;
+  }
+
+  for (const user of users) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `user-result${selectable && state.selectedGroupUsers.has(user.id) ? " is-selected" : ""}`;
+    const avatar = createAvatar(getInitials(user.name), getAvatarColor(user.id), "user-result-avatar");
+    const copy = document.createElement("span");
+    copy.className = "user-result-copy";
+    const name = document.createElement("strong");
+    name.textContent = user.name;
+    const email = document.createElement("span");
+    email.textContent = user.email;
+    const presence = document.createElement("span");
+    presence.className = `user-result-presence${user.online ? " is-online" : ""}`;
+    presence.textContent = user.online ? "Online" : "Offline";
+    copy.append(name, email);
+    button.append(avatar, copy, presence);
+    button.addEventListener("click", () => onSelect(user));
+    container.append(button);
+  }
+}
+
+async function searchUsers(input, container, selectable = false) {
+  const query = input.value.trim();
+  const requestId = ++userSearchSequence;
+  if (query.length < 2) {
+    showUserSearchMessage(container, "Type at least 2 characters to search.");
+    return;
+  }
+  showUserSearchMessage(container, "Searching…");
+  try {
+    const result = await api(`/api/users?search=${encodeURIComponent(query)}`);
+    if (requestId !== userSearchSequence) return;
+    const handleSelect = (user) => {
+      if (!selectable) {
+        openDirectConversation(user.id);
+        return;
+      }
+      if (state.selectedGroupUsers.has(user.id)) state.selectedGroupUsers.delete(user.id);
+      else state.selectedGroupUsers.add(user.id);
+      renderUserResults(container, result.users, handleSelect, true);
+      updateGroupForm();
+    };
+    renderUserResults(container, result.users, handleSelect, selectable);
+  } catch (error) {
+    if (requestId === userSearchSequence) showUserSearchMessage(container, error.message);
+  }
+}
+
+function openConversationDialog() {
+  conversationError.textContent = "";
+  state.selectedGroupUsers.clear();
+  document.querySelector("#user-search").value = "";
+  document.querySelector("#group-user-search").value = "";
+  document.querySelector("#group-title").value = "";
+  updateGroupForm();
+  showUserSearchMessage(userResults, "Type at least 2 characters to search.");
+  showUserSearchMessage(groupUserResults, "Type at least 2 characters to search.");
+  setConversationMode("direct");
+  conversationDialog.showModal();
+  document.querySelector("#user-search").focus();
+}
+
+function setConversationMode(mode) {
+  const isGroup = mode === "group";
+  document.querySelector("#direct-pane").hidden = isGroup;
+  document.querySelector("#group-pane").hidden = !isGroup;
+  document.querySelector("#direct-tab").classList.toggle("is-active", !isGroup);
+  document.querySelector("#group-tab").classList.toggle("is-active", isGroup);
+  document.querySelector("#direct-tab").setAttribute("aria-selected", String(!isGroup));
+  document.querySelector("#group-tab").setAttribute("aria-selected", String(isGroup));
+  conversationError.textContent = "";
+  if (isGroup) document.querySelector("#group-title").focus();
+  else document.querySelector("#user-search").focus();
+}
+
+async function openDirectConversation(userId) {
+  try {
+    const result = await api("/api/conversations/direct", {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    });
+    conversationDialog.close();
+    await loadConversations(result.conversationId);
+  } catch (error) {
+    conversationError.textContent = error.message;
+  }
+}
+
+function updateGroupForm() {
+  const count = state.selectedGroupUsers.size;
+  document.querySelector("#selected-count").textContent =
+    count === 0 ? "Choose at least one person." : `${count} ${count === 1 ? "person" : "people"} selected`;
+  document.querySelector("#create-group-button").disabled =
+    count === 0 || document.querySelector("#group-title").value.trim().length < 2;
+}
+
+async function createGroup(event) {
   event.preventDefault();
+  const title = document.querySelector("#group-title").value.trim();
+  const userIds = [...state.selectedGroupUsers];
+  try {
+    const result = await api("/api/conversations/group", {
+      method: "POST",
+      body: JSON.stringify({ title, userIds }),
+    });
+    conversationDialog.close();
+    await loadConversations(result.conversationId);
+  } catch (error) {
+    conversationError.textContent = error.message;
+  }
+}
+
+async function sendMessage(event) {
+  event.preventDefault();
+  const conversation = getActiveConversation();
   const text = messageInput.value.trim();
-  if (!text) {
+  if (!conversation || !text) {
     messageInput.focus();
     return;
   }
@@ -387,45 +560,116 @@ messageForm.addEventListener("submit", (event) => {
     return;
   }
 
-  socket.emit("send_message", {
-    chatId: activeConversationId,
-    text,
-    senderId: currentUserId,
-    senderName: currentUserName,
-  });
-  messageInput.value = "";
-  messageInput.focus();
-});
-
-document.querySelector("#open-profile").addEventListener("click", () => {
-  displayNameInput.value = currentUserName;
-  profileDialog.showModal();
-  displayNameInput.focus();
-});
-document.querySelector("#rail-profile").addEventListener("click", () => {
-  displayNameInput.value = currentUserName;
-  profileDialog.showModal();
-  displayNameInput.focus();
-});
-
-function closeProfileDialog() {
-  profileDialog.close();
+  socket.emit(
+    "send_message",
+    { conversationId: conversation.id, text },
+    (result) => {
+      if (!result?.ok) {
+        showToast(result?.error || "The message could not be sent.");
+        return;
+      }
+      messageInput.value = "";
+      messageInput.focus();
+    },
+  );
 }
 
-document.querySelector("#close-profile").addEventListener("click", closeProfileDialog);
-document.querySelector("#cancel-profile").addEventListener("click", closeProfileDialog);
-profileForm.addEventListener("submit", (event) => {
+function updateAuthFromServer(result) {
+  saveAuth(result);
+  authScreen.hidden = true;
+  appShell.hidden = false;
+  updateProfile();
+  callController = window.createCallController({
+    socket,
+    api,
+    getActiveConversation,
+    showToast,
+  });
+  socket.auth = { token: state.token };
+  socket.connect();
+  loadConversations().catch((error) => showToast(error.message));
+}
+
+authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const nextName = displayNameInput.value.trim().slice(0, 24);
-  if (!nextName) {
-    displayNameInput.focus();
+  authError.textContent = "";
+  const name = document.querySelector("#auth-name").value.trim();
+  const email = document.querySelector("#auth-email").value.trim();
+  const password = document.querySelector("#auth-password").value;
+  if (!email || !password || (state.authMode === "register" && name.length < 2)) {
+    authError.textContent = "Fill in all required fields.";
     return;
   }
-  currentUserName = nextName;
-  localStorage.setItem("orbit-chat-display-name", currentUserName);
-  updateProfile();
-  closeProfileDialog();
+
+  const submit = document.querySelector("#auth-submit");
+  submit.disabled = true;
+  try {
+    const route = state.authMode === "register" ? "/api/auth/register" : "/api/auth/login";
+    const result = await api(route, {
+      method: "POST",
+      body: JSON.stringify({ name, email, password }),
+    });
+    updateAuthFromServer(result);
+  } catch (error) {
+    authError.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
 });
+
+document.querySelector("#auth-toggle").addEventListener("click", () => {
+  setAuthMode(state.authMode === "login" ? "register" : "login");
+});
+document.querySelector("#sign-out").addEventListener("click", signOut);
+document.querySelector("#new-chat-button").addEventListener("click", openConversationDialog);
+document.querySelector("#empty-new-chat").addEventListener("click", openConversationDialog);
+document.querySelector("#nav-contacts").addEventListener("click", openConversationDialog);
+document.querySelector("#close-conversation-dialog").addEventListener("click", () => conversationDialog.close());
+document.querySelector("#direct-tab").addEventListener("click", () => setConversationMode("direct"));
+document.querySelector("#group-tab").addEventListener("click", () => setConversationMode("group"));
+document.querySelector("#group-form").addEventListener("submit", createGroup);
+document.querySelector("#group-title").addEventListener("input", updateGroupForm);
+document.querySelector("#user-search").addEventListener("input", (event) =>
+  searchUsers(event.currentTarget, userResults),
+);
+document.querySelector("#group-user-search").addEventListener("input", (event) =>
+  searchUsers(event.currentTarget, groupUserResults, true),
+);
+
+chatSearch.addEventListener("input", () => {
+  state.search = chatSearch.value;
+  renderConversations();
+});
+document.querySelectorAll(".filter-tab").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.activeFilter = button.dataset.filter;
+    document.querySelectorAll(".filter-tab").forEach((tab) => {
+      tab.classList.toggle("is-active", tab === button);
+    });
+    renderConversations();
+  });
+});
+document.querySelector("#sort-button").addEventListener("click", (event) => {
+  state.newestFirst = !state.newestFirst;
+  event.currentTarget.textContent = state.newestFirst ? "Newest" : "Oldest";
+  renderConversations();
+});
+document.querySelector("#nav-chats").addEventListener("click", () => appShell.classList.remove("chat-open"));
+document.querySelector("#back-to-list").addEventListener("click", () => appShell.classList.remove("chat-open"));
+document.querySelector("#details-toggle").addEventListener("click", () => {
+  if (window.matchMedia("(max-width: 930px)").matches) {
+    showToast("Conversation details are hidden on smaller screens.");
+    return;
+  }
+  appShell.classList.toggle("details-collapsed");
+});
+document.querySelector("#emoji-button").addEventListener("click", () => {
+  const start = messageInput.selectionStart;
+  const end = messageInput.selectionEnd;
+  messageInput.setRangeText("🙂", start, end, "end");
+  messageInput.focus();
+});
+messageForm.addEventListener("submit", sendMessage);
 
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -436,28 +680,65 @@ document.addEventListener("keydown", (event) => {
 
 socket.on("connect", () => {
   updateConnectionStatus(true);
-  socket.emit("join_chat", activeConversationId);
-});
-socket.on("disconnect", () => updateConnectionStatus(false));
-socket.on("connect_error", () => updateConnectionStatus(false));
-socket.on("chat_history", (payload) => {
-  if (!payload || payload.chatId !== activeConversationId || !Array.isArray(payload.messages)) return;
-  messageList.replaceChildren();
-  payload.messages.forEach(renderMessage);
   const conversation = getActiveConversation();
-  const latest = payload.messages[payload.messages.length - 1];
-  if (conversation && latest) {
-    conversation.preview = latest.text;
-    conversation.lastAt = latest.createdAt;
-    renderConversations();
-  }
-  window.requestAnimationFrame(() => {
-    messageArea.scrollTop = messageArea.scrollHeight;
-  });
+  if (conversation) showSelectedConversation(conversation);
 });
-socket.on("receive_message", appendMessage);
+socket.on("disconnect", () => {
+  updateConnectionStatus(false);
+  callController?.handleDisconnect();
+});
+socket.on("connect_error", (error) => {
+  updateConnectionStatus(false);
+  if (/sign in|session|account/i.test(error.message)) {
+    showToast("Your session expired. Please sign in again.");
+    signOut();
+  }
+});
+socket.on("presence:snapshot", (userIds) => {
+  state.onlineUsers = new Set(userIds);
+  for (const conversation of state.conversations) {
+    if (conversation.otherUserId) {
+      conversation.presence = state.onlineUsers.has(conversation.otherUserId) ? "Online" : "Offline";
+    }
+  }
+  renderConversations();
+  if (getActiveConversation()) updateConversationDetails(getActiveConversation());
+});
+socket.on("presence:update", ({ userId, online }) => setPresence(userId, online));
+socket.on("receive_message", handleIncomingMessage);
 socket.on("chat_error", (message) => showToast(String(message)));
 
-updateProfile();
-updateConversationDetails(getActiveConversation());
-renderConversations();
+socket.on("call:incoming", (call) => callController?.handleIncoming(call));
+socket.on("call:accepted", (event) => callController?.handleAccepted(event));
+socket.on("call:signal", (event) => callController?.handleSignal(event));
+socket.on("call:ended", (event) => callController?.handleEnded(event));
+
+async function restoreSession() {
+  if (!state.token) {
+    showAuth();
+    return;
+  }
+  try {
+    const result = await api("/api/me");
+    state.user = result.user;
+    authScreen.hidden = true;
+    appShell.hidden = false;
+    updateProfile();
+    callController = window.createCallController({
+      socket,
+      api,
+      getActiveConversation,
+      showToast,
+    });
+    socket.auth = { token: state.token };
+    socket.connect();
+    await loadConversations();
+  } catch (error) {
+    sessionStorage.removeItem("orbit-chat-token");
+    state.token = null;
+    showAuth();
+    authError.textContent = error.message;
+  }
+}
+
+restoreSession();
