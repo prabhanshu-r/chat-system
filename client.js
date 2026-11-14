@@ -1,5 +1,12 @@
 const API_BASE = (window.CHAT_CONFIG?.apiUrl || window.location.origin).replace(/\/+$/, "");
 const socket = io(API_BASE, { autoConnect: false });
+const supabaseClient =
+  window.supabase && window.CHAT_CONFIG?.supabaseUrl && window.CHAT_CONFIG?.supabaseAnonKey
+    ? window.supabase.createClient(
+        window.CHAT_CONFIG.supabaseUrl,
+        window.CHAT_CONFIG.supabaseAnonKey,
+      )
+    : null;
 
 const state = {
   token: sessionStorage.getItem("orbit-chat-token"),
@@ -136,6 +143,7 @@ function saveAuth(result) {
 async function signOut() {
   callController?.endCurrentCall("signed out");
   socket.disconnect();
+  await clearGoogleSession();
   state.token = null;
   state.user = null;
   state.conversations = [];
@@ -144,6 +152,12 @@ async function signOut() {
   sessionStorage.removeItem("orbit-chat-token");
   messageList.replaceChildren();
   showAuth();
+}
+
+async function clearGoogleSession() {
+  if (!supabaseClient) return;
+  const { error } = await supabaseClient.auth.signOut({ scope: "local" });
+  if (error) showToast("Could not clear the Google sign-in session.");
 }
 
 function updateProfile() {
@@ -622,6 +636,28 @@ authForm.addEventListener("submit", async (event) => {
   }
 });
 
+document.querySelector("#google-sign-in").addEventListener("click", async (event) => {
+  authError.textContent = "";
+  if (!supabaseClient) {
+    authError.textContent =
+      "Google sign-in is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in your environment.";
+    return;
+  }
+
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) throw error;
+  } catch (error) {
+    authError.textContent = error.message || "Google sign-in could not be started.";
+    button.disabled = false;
+  }
+});
+
 document.querySelector("#auth-toggle").addEventListener("click", () => {
   setAuthMode(state.authMode === "login" ? "register" : "login");
 });
@@ -726,6 +762,29 @@ socket.on("call:ended", (event) => callController?.handleEnded(event));
 
 async function restoreSession() {
   if (!state.token) {
+    if (supabaseClient) {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error) {
+        showAuth();
+        authError.textContent = "Could not restore the Google sign-in session. Please try again.";
+        return;
+      }
+      if (data.session) {
+        try {
+          const result = await api("/api/auth/google", {
+            method: "POST",
+            body: JSON.stringify({ accessToken: data.session.access_token }),
+          });
+          await clearGoogleSession();
+          updateAuthFromServer(result);
+        } catch (exchangeError) {
+          await clearGoogleSession();
+          showAuth();
+          authError.textContent = exchangeError.message;
+        }
+        return;
+      }
+    }
     showAuth();
     return;
   }

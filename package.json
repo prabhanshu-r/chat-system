@@ -20,6 +20,9 @@
     "url": "https://github.com/prabhanshu-r/chat-system/issues"
   },
   "homepage": "https://github.com/prabhanshu-r/chat-system#readme",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",

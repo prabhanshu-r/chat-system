@@ -10,6 +10,33 @@ function normalizeEmail(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+function getGoogleProfile(user) {
+  const id = typeof user?.id === "string" ? user.id.toLowerCase() : "";
+  const email = normalizeEmail(user?.email);
+  const providers = user?.app_metadata?.providers;
+  const isGoogleUser =
+    user?.app_metadata?.provider === "google" ||
+    (Array.isArray(providers) && providers.includes("google"));
+
+  if (
+    !isUuid(id) ||
+    !email ||
+    email.length > 254 ||
+    !EMAIL_PATTERN.test(email) ||
+    !user.email_confirmed_at ||
+    !isGoogleUser
+  ) {
+    return null;
+  }
+
+  const metadata = user.user_metadata || {};
+  const displayName = [metadata.full_name, metadata.name].find(
+    (value) => typeof value === "string" && value.trim(),
+  );
+  const name = (displayName || email.split("@")[0]).trim().slice(0, 60);
+  return { id, name, email };
+}
+
 function validateRegistration(payload) {
   const name = typeof payload?.name === "string" ? payload.name.trim() : "";
   const email = normalizeEmail(payload?.email);
@@ -29,4 +56,4 @@ function validateRegistration(payload) {
   return { ok: true, name, email, password };
 }
 
-module.exports = { isUuid, normalizeEmail, validateRegistration };
+module.exports = { getGoogleProfile, isUuid, normalizeEmail, validateRegistration };

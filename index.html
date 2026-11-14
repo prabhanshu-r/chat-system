@@ -48,6 +48,13 @@
           <button class="primary-button auth-submit" id="auth-submit" type="submit">Sign in</button>
         </form>
 
+        <div class="auth-divider"><span>or continue with</span></div>
+        <button class="google-button" id="google-sign-in" type="button">
+          <span class="google-mark" aria-hidden="true">G</span>
+          <span>Continue with Google</span>
+        </button>
+        <p class="google-note">Your Google password is never shared with Safe Chat.</p>
+
         <p class="auth-switch">
           <span id="auth-switch-label">New to Safe Chat?</span>
           <button class="inline-button" id="auth-toggle" type="button">Create an account</button>
@@ -281,6 +288,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/config.js"></script>
+    <script src="/supabase.js"></script>
     <script src="/socket.io-client.js"></script>
     <script src="/calls.js" defer></script>
     <script src="/client.js" defer></script>

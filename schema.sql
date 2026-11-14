@@ -2,9 +2,17 @@ CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY,
   name VARCHAR(60) NOT NULL,
   email VARCHAR(254) NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
+  supabase_user_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_user_id UUID;
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_supabase_user_id_unique
+  ON users (supabase_user_id)
+  WHERE supabase_user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS conversations (
   id UUID PRIMARY KEY,

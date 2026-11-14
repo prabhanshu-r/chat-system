@@ -4,9 +4,14 @@ const path = require("node:path");
 const root = __dirname;
 const output = path.join(root, "dist");
 const apiUrl = (process.env.PUBLIC_API_URL || "http://localhost:3001").replace(/\/+$/, "");
+const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
 
 if (process.env.VERCEL && !process.env.PUBLIC_API_URL) {
   throw new Error("Set PUBLIC_API_URL in Vercel to the deployed Node backend URL.");
+}
+if (process.env.VERCEL && (!supabaseUrl || !supabaseAnonKey)) {
+  throw new Error("Set SUPABASE_URL and SUPABASE_ANON_KEY in Vercel to enable Google sign-in.");
 }
 
 let parsedApiUrl;
@@ -23,6 +28,21 @@ if (process.env.VERCEL && parsedApiUrl.protocol !== "https:") {
   throw new Error("PUBLIC_API_URL must use HTTPS when deploying to Vercel.");
 }
 
+if (supabaseUrl) {
+  let parsedSupabaseUrl;
+  try {
+    parsedSupabaseUrl = new URL(supabaseUrl);
+  } catch {
+    throw new Error("SUPABASE_URL must be an absolute http(s) URL.");
+  }
+  if (parsedSupabaseUrl.protocol !== "http:" && parsedSupabaseUrl.protocol !== "https:") {
+    throw new Error("SUPABASE_URL must use http:// or https://.");
+  }
+  if (process.env.VERCEL && parsedSupabaseUrl.protocol !== "https:") {
+    throw new Error("SUPABASE_URL must use HTTPS when deploying to Vercel.");
+  }
+}
+
 fs.mkdirSync(output, { recursive: true });
 
 for (const filename of ["index.html", "styles.css", "client.js", "calls.js"]) {
@@ -33,9 +53,13 @@ fs.copyFileSync(
   path.join(root, "node_modules", "socket.io", "client-dist", "socket.io.min.js"),
   path.join(output, "socket.io-client.js"),
 );
+fs.copyFileSync(
+  path.join(root, "node_modules", "@supabase", "supabase-js", "dist", "umd", "supabase.js"),
+  path.join(output, "supabase.js"),
+);
 fs.writeFileSync(
   path.join(output, "config.js"),
-  `window.CHAT_CONFIG = ${JSON.stringify({ apiUrl })};\n`,
+  `window.CHAT_CONFIG = ${JSON.stringify({ apiUrl, supabaseUrl, supabaseAnonKey })};\n`,
 );
 
 console.log(`Built static client for ${parsedApiUrl.origin}`);

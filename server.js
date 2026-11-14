@@ -10,9 +10,10 @@ const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const jwt = require("jsonwebtoken");
 const http = require("node:http");
+const { createClient } = require("@supabase/supabase-js");
 const { Server } = require("socket.io");
 const { initializeDatabase, pool } = require("./db");
-const { isUuid, normalizeEmail, validateRegistration } = require("./validators");
+const { getGoogleProfile, isUuid, normalizeEmail, validateRegistration } = require("./validators");
 
 const port = Number(process.env.PORT) || 3001;
 const jwtSecret = process.env.JWT_SECRET;
@@ -22,6 +23,30 @@ if (!jwtSecret || Buffer.byteLength(jwtSecret, "utf8") < 32) {
 
 const publicApiUrl = (process.env.PUBLIC_API_URL || `http://localhost:${port}`).replace(/\/+$/, "");
 const apiOrigin = new URL(publicApiUrl).origin;
+const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
+let supabaseOrigin = null;
+if (supabaseUrl) {
+  let parsedSupabaseUrl;
+  try {
+    parsedSupabaseUrl = new URL(supabaseUrl);
+  } catch {
+    throw new Error("SUPABASE_URL must be an absolute http(s) URL.");
+  }
+  if (parsedSupabaseUrl.protocol !== "http:" && parsedSupabaseUrl.protocol !== "https:") {
+    throw new Error("SUPABASE_URL must use http:// or https://.");
+  }
+  if (process.env.NODE_ENV === "production" && parsedSupabaseUrl.protocol !== "https:") {
+    throw new Error("SUPABASE_URL must use HTTPS in production.");
+  }
+  supabaseOrigin = parsedSupabaseUrl.origin;
+}
+const supabaseAuth =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
+      })
+    : null;
 const allowedOrigins = (process.env.FRONTEND_ORIGINS || `http://localhost:${port}`)
   .split(",")
   .map((origin) => new URL(origin.trim()).origin);
@@ -45,6 +70,15 @@ const socketClientPath = path.join(
   "client-dist",
   "socket.io.min.js",
 );
+const supabaseClientPath = path.join(
+  __dirname,
+  "node_modules",
+  "@supabase",
+  "supabase-js",
+  "dist",
+  "umd",
+  "supabase.js",
+);
 
 app.use(
   helmet({
@@ -52,7 +86,14 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         baseUri: ["'self'"],
-        connectSrc: ["'self'", apiOrigin, ...allowedOrigins, "ws:", "wss:"],
+        connectSrc: [
+          "'self'",
+          apiOrigin,
+          ...(supabaseOrigin ? [supabaseOrigin] : []),
+          ...allowedOrigins,
+          "ws:",
+          "wss:",
+        ],
         fontSrc: ["'self'", "data:"],
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
@@ -148,9 +189,13 @@ app.get("/socket.io-client.js", (request, response) => {
   response.sendFile(socketClientPath);
 });
 
+app.get("/supabase.js", (request, response) => {
+  response.sendFile(supabaseClientPath);
+});
+
 app.get("/config.js", (request, response) => {
   response.type("application/javascript").send(
-    `window.CHAT_CONFIG = ${JSON.stringify({ apiUrl: publicApiUrl })};`,
+    `window.CHAT_CONFIG = ${JSON.stringify({ apiUrl: publicApiUrl, supabaseUrl, supabaseAnonKey })};`,
   );
 });
 
@@ -216,13 +261,99 @@ app.post(
       [email],
     );
     const userRow = result.rows[0];
-    if (!userRow || !(await bcrypt.compare(password, userRow.password_hash))) {
+    if (!userRow?.password_hash || !(await bcrypt.compare(password, userRow.password_hash))) {
       response.status(401).json({ error: "Email or password is incorrect." });
       return;
     }
 
     const user = publicUser(userRow);
     response.json({ token: issueToken(user.id), user });
+  }),
+);
+
+app.post(
+  "/api/auth/google",
+  authRateLimit,
+  asyncRoute(async (request, response) => {
+    if (!supabaseAuth) {
+      response.status(503).json({ error: "Google sign-in is not configured on the backend." });
+      return;
+    }
+
+    const accessToken =
+      typeof request.body?.accessToken === "string" ? request.body.accessToken : "";
+    if (!accessToken || accessToken.length > 4096) {
+      response.status(400).json({ error: "A valid Google sign-in session is required." });
+      return;
+    }
+
+    const { data, error } = await supabaseAuth.auth.getUser(accessToken);
+    if (error || !data.user) {
+      response.status(401).json({ error: "Google sign-in could not be verified. Please try again." });
+      return;
+    }
+
+    const profile = getGoogleProfile(data.user);
+    if (!profile) {
+      response.status(403).json({ error: "Use a verified Google account to sign in." });
+      return;
+    }
+
+    const client = await pool.connect();
+    let transactionStarted = false;
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+      const existing = await client.query(
+        `SELECT id, name, email
+         FROM users
+         WHERE supabase_user_id = $1
+         FOR UPDATE`,
+        [profile.id],
+      );
+      let userRow = existing.rows[0];
+
+      if (userRow) {
+        if (userRow.email !== profile.email) {
+          const updated = await client.query(
+            "UPDATE users SET email = $2 WHERE id = $1 RETURNING id, name, email",
+            [userRow.id, profile.email],
+          );
+          userRow = updated.rows[0];
+        }
+      } else {
+        const inserted = await client.query(
+          `INSERT INTO users (id, name, email, password_hash, supabase_user_id)
+           VALUES ($1, $2, $3, NULL, $1)
+           ON CONFLICT (email) DO UPDATE
+           SET supabase_user_id = EXCLUDED.supabase_user_id
+           WHERE users.supabase_user_id IS NULL
+             OR users.supabase_user_id = EXCLUDED.supabase_user_id
+           RETURNING id, name, email`,
+          [profile.id, profile.name, profile.email],
+        );
+        if (inserted.rowCount === 0) {
+          const conflict = new Error("This email is already linked to another Google account.");
+          conflict.status = 409;
+          throw conflict;
+        }
+        userRow = inserted.rows[0];
+      }
+
+      await client.query("COMMIT");
+      transactionStarted = false;
+      const user = publicUser(userRow);
+      response.json({ token: issueToken(user.id), user });
+    } catch (error) {
+      if (transactionStarted) await client.query("ROLLBACK");
+      if (error.code === "23505") {
+        error.status = 409;
+        error.message = "This Google account email is already in use.";
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }),
 );
 

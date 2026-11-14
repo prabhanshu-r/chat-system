@@ -2232,6 +2232,59 @@ summary:focus-visible {
   color: #a0fff4;
 }
 
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 12px;
+  color: #8698b2;
+  font-size: 9px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  height: 1px;
+  flex: 1;
+  background: rgba(194, 214, 248, 0.14);
+  content: "";
+}
+
+.google-button {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid rgba(194, 214, 248, 0.2);
+  border-radius: 9px;
+  background: rgba(210, 224, 248, 0.06);
+  color: #e8effa;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.google-button:hover {
+  border-color: rgba(194, 214, 248, 0.34);
+  background: rgba(210, 224, 248, 0.11);
+}
+
+.google-mark {
+  color: #7ca9ff;
+  font-family: Arial, sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.google-note {
+  margin: 8px 0 0;
+  color: #7f91ac;
+  font-size: 8px;
+  text-align: center;
+}
+
 .auth-field input:focus {
   outline: 0;
 }
