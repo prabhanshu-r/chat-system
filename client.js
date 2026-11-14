@@ -151,7 +151,6 @@ function updateProfile() {
   document.querySelector("#profile-name").textContent = state.user.name;
   document.querySelector("#profile-email").textContent = state.user.email;
   document.querySelector("#profile-avatar").textContent = initials;
-  document.querySelector("#rail-profile").textContent = initials;
 }
 
 function visibleConversations() {
@@ -275,6 +274,9 @@ function updateConversationDetails(conversation) {
 
   document.querySelector("#voice-call-button").disabled = !direct;
   document.querySelector("#video-call-button").disabled = !direct;
+  document.querySelector("#details-voice-call-button").disabled = !direct;
+  document.querySelector("#details-video-call-button").disabled = !direct;
+  document.querySelector("#details-message-button").disabled = false;
   document.querySelector("#details-toggle").disabled = false;
 }
 
@@ -416,6 +418,9 @@ async function loadConversations(preferredId = state.activeConversationId) {
     composerWrap.hidden = true;
     document.querySelector("#voice-call-button").disabled = true;
     document.querySelector("#video-call-button").disabled = true;
+    document.querySelector("#details-voice-call-button").disabled = true;
+    document.querySelector("#details-video-call-button").disabled = true;
+    document.querySelector("#details-message-button").disabled = true;
     document.querySelector("#details-toggle").disabled = true;
   }
 }
@@ -623,7 +628,6 @@ document.querySelector("#auth-toggle").addEventListener("click", () => {
 document.querySelector("#sign-out").addEventListener("click", signOut);
 document.querySelector("#new-chat-button").addEventListener("click", openConversationDialog);
 document.querySelector("#empty-new-chat").addEventListener("click", openConversationDialog);
-document.querySelector("#nav-contacts").addEventListener("click", openConversationDialog);
 document.querySelector("#close-conversation-dialog").addEventListener("click", () => conversationDialog.close());
 document.querySelector("#direct-tab").addEventListener("click", () => setConversationMode("direct"));
 document.querySelector("#group-tab").addEventListener("click", () => setConversationMode("group"));
@@ -656,6 +660,13 @@ document.querySelector("#sort-button").addEventListener("click", (event) => {
 });
 document.querySelector("#nav-chats").addEventListener("click", () => appShell.classList.remove("chat-open"));
 document.querySelector("#back-to-list").addEventListener("click", () => appShell.classList.remove("chat-open"));
+document.querySelector("#details-voice-call-button").addEventListener("click", () => {
+  document.querySelector("#voice-call-button").click();
+});
+document.querySelector("#details-video-call-button").addEventListener("click", () => {
+  document.querySelector("#video-call-button").click();
+});
+document.querySelector("#details-message-button").addEventListener("click", () => messageInput.focus());
 document.querySelector("#details-toggle").addEventListener("click", () => {
   if (window.matchMedia("(max-width: 930px)").matches) {
     showToast("Conversation details are hidden on smaller screens.");

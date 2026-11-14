@@ -6,7 +6,13 @@ Safe Chat is a real-time messaging app with registered accounts, Supabase-hosted
 
 1. Install Node.js 20 or newer and create a Supabase project.
 2. In the Supabase Dashboard, open **Connect** and copy the **Session pooler** connection string (port `5432`). Use the session pooler for this long-running Node backend; do not use the browser's `anon` key or `service_role` key as a database URL.
-3. Copy `.env.example` to `.env`, replace the `DATABASE_URL` example with the copied connection string, and replace `JWT_SECRET` with a private random value of at least 32 characters. Keep `.env` private; URL-encode special characters in the database password if you need to insert it into the URI.
+3. Copy `.env.example` to `.env`, replace the `DATABASE_URL` example with the copied connection string, and generate a private JWT secret with:
+
+   ```powershell
+   node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+   ```
+
+   Put the 64-character output after `JWT_SECRET=` in `.env`. Keep `.env` private; URL-encode special characters in the database password if you need to insert it into the URI.
 4. Run:
 
    ```powershell
