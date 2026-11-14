@@ -1,12 +1,12 @@
-# Orbit Chat
+# Safe Chat
 
-Orbit Chat is a small real-time messaging app with registered accounts, PostgreSQL message history, direct and group conversations, and one-to-one audio/video calls.
+Safe Chat is a real-time messaging app with registered accounts, Supabase-hosted PostgreSQL message history, direct and group conversations, and one-to-one audio/video calls. The Express backend connects to Supabase PostgreSQL using the existing `pg` driver; no Supabase client key is exposed to the browser.
 
 ## Run locally
 
-1. Install Node.js 20 or newer and PostgreSQL.
-2. Create a PostgreSQL database named `chat_system` in pgAdmin.
-3. Copy `.env.example` to `.env`, then set `DATABASE_URL` to the connection URL for that database and replace `JWT_SECRET` with a private random value of at least 32 characters.
+1. Install Node.js 20 or newer and create a Supabase project.
+2. In the Supabase Dashboard, open **Connect** and copy the **Session pooler** connection string (port `5432`). Use the session pooler for this long-running Node backend; do not use the browser's `anon` key or `service_role` key as a database URL.
+3. Copy `.env.example` to `.env`, replace the `DATABASE_URL` example with the copied connection string, and replace `JWT_SECRET` with a private random value of at least 32 characters. Keep `.env` private; URL-encode special characters in the database password if you need to insert it into the URI.
 4. Run:
 
    ```powershell
@@ -14,9 +14,9 @@ Orbit Chat is a small real-time messaging app with registered accounts, PostgreS
    npm start
    ```
 
-5. Open `http://localhost:3001` and create an account. The server creates the tables from `schema.sql` on startup.
+5. Open `http://localhost:3001` and create an account. The server creates the app's tables in Supabase's `public` schema from `schema.sql` on startup.
 
-Never commit `.env` or paste database passwords into chat. A PostgreSQL server running on `localhost` is available only on your computer.
+The app currently manages its own email/password accounts in its `users` table; it does not use Supabase Auth. Passwords are hashed by the backend. Never commit `.env` or paste database passwords into chat.
 
 ## Calls
 
@@ -32,10 +32,10 @@ Use provider-issued, short-lived TURN credentials. Calls may not connect on rest
 
 ## Deploy
 
-Vercel hosts the static web client. The Express/Socket.IO backend needs a persistent Node process, so `render.yaml` prepares it for Render. The database must also be hosted online; a local pgAdmin connection cannot be reached from Render.
+Vercel hosts the static web client. The Express/Socket.IO backend needs a persistent Node process, so `render.yaml` prepares it for Render. Supabase hosts the PostgreSQL database; the backend connects to it directly using the session pooler URI.
 
-1. Create a hosted PostgreSQL database with a provider such as Neon or Render, and keep its connection URL private.
-2. Deploy the backend using `render.yaml`. Set `DATABASE_URL` to the hosted database URL. Render generates `JWT_SECRET` for the service.
+1. Create a Supabase project and copy its **Session pooler** connection string from **Connect**.
+2. Deploy the backend using `render.yaml`. Set `DATABASE_URL` to the Supabase session pooler URI in Render's private environment settings. Render generates `JWT_SECRET` for the service.
 3. Import this repository into Vercel. Set `PUBLIC_API_URL` to the backend’s public HTTPS URL, then deploy. The configured build creates the static files in `dist`.
 4. Copy the Vercel site’s exact origin (for example, `https://your-app.vercel.app`) into the Render service’s `FRONTEND_ORIGINS` variable and redeploy the backend.
 5. For camera/microphone calls on networks that need relaying, set `TURN_SERVERS_JSON` on the backend, then redeploy.

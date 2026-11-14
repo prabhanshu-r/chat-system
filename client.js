@@ -114,7 +114,7 @@ function setAuthMode(mode) {
   document.querySelector("#auth-submit").textContent = isRegister ? "Create account" : "Sign in";
   document.querySelector("#auth-switch-label").textContent = isRegister
     ? "Already have an account?"
-    : "New to Orbit Chat?";
+    : "New to Safe Chat?";
   document.querySelector("#auth-toggle").textContent = isRegister ? "Sign in" : "Create an account";
   authError.textContent = "";
 }
@@ -260,7 +260,7 @@ function updateConversationDetails(conversation) {
   }
 
   document.querySelector("#details-name").textContent = conversation.name;
-  document.querySelector("#details-role").textContent = direct ? "Orbit Chat member" : "Group conversation";
+  document.querySelector("#details-role").textContent = direct ? "Safe Chat member" : "Group conversation";
   document.querySelector("#details-presence").textContent = conversation.presence;
   document.querySelector("#details-status-dot").hidden = !direct || conversation.presence !== "Online";
   document.querySelector("#details-about").textContent = direct

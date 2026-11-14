@@ -355,7 +355,8 @@ app.post(
   "/api/conversations/direct",
   requireAuth,
   asyncRoute(async (request, response) => {
-    const otherUserId = request.body?.userId;
+    const otherUserId =
+      typeof request.body?.userId === "string" ? request.body.userId.toLowerCase() : "";
     if (!isUuid(otherUserId) || otherUserId === request.userId) {
       response.status(400).json({ error: "Choose another registered user." });
       return;
@@ -420,7 +421,9 @@ app.post(
       return;
     }
 
-    const userIds = [...new Set(requestedIds)].filter((userId) => userId !== request.userId);
+    const userIds = [...new Set(requestedIds.map((userId) => userId.toLowerCase()))].filter(
+      (userId) => userId !== request.userId,
+    );
     if (userIds.length === 0) {
       response.status(400).json({ error: "Choose at least one other person." });
       return;
@@ -733,7 +736,11 @@ app.use((error, request, response, next) => {
     return;
   }
   console.error("Request failed:", error);
-  response.status(500).json({ error: "Something went wrong. Please try again." });
+  const status =
+    Number.isInteger(error.status) && error.status >= 400 && error.status < 500 ? error.status : 500;
+  response
+    .status(status)
+    .json({ error: status < 500 ? error.message : "Something went wrong. Please try again." });
 });
 
 async function startServer() {

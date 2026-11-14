@@ -1,24 +1,24 @@
 :root {
   color-scheme: dark;
   font-family: "DM Sans", "Segoe UI", sans-serif;
-  color: #e7edf7;
-  background: #080d16;
+  color: #f7ece4;
+  background: #190d11;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --page: #080d16;
-  --rail: #0c1421;
-  --sidebar: #101a2a;
-  --panel: #111b2b;
-  --panel-raised: #172335;
-  --panel-hover: #1b2940;
-  --line: rgba(179, 197, 224, 0.1);
-  --line-strong: rgba(179, 197, 224, 0.16);
-  --text: #e7edf7;
-  --muted: #8d9bb1;
-  --faint: #5f6e85;
-  --cyan: #45d6cb;
-  --blue: #4a9cf5;
-  --message-in: #202c3d;
+  --page: #190d11;
+  --rail: rgba(53, 26, 31, 0.78);
+  --sidebar: rgba(62, 35, 35, 0.78);
+  --panel: rgba(49, 29, 30, 0.82);
+  --panel-raised: rgba(101, 63, 50, 0.58);
+  --panel-hover: rgba(129, 78, 58, 0.48);
+  --line: rgba(255, 226, 205, 0.12);
+  --line-strong: rgba(255, 226, 205, 0.2);
+  --text: #f7ece4;
+  --muted: #c4aaa0;
+  --faint: #967c73;
+  --cyan: #e5b184;
+  --blue: #b45c68;
+  --message-in: rgba(113, 76, 61, 0.62);
 }
 
 * {
@@ -31,8 +31,9 @@ body {
   margin: 0;
   padding: 22px;
   background:
-    radial-gradient(ellipse at 48% -15%, rgba(35, 101, 135, 0.13), transparent 49%),
-    var(--page);
+    radial-gradient(ellipse at 14% 12%, rgba(128, 43, 62, 0.38), transparent 43%),
+    radial-gradient(ellipse at 86% 82%, rgba(130, 83, 55, 0.24), transparent 42%),
+    linear-gradient(135deg, #190d11, #241217 52%, #17100f);
 }
 
 button,
@@ -1884,6 +1885,212 @@ summary:focus-visible {
   .auth-card {
     padding: 27px 22px;
   }
+}
+
+/* Warm glass theme */
+.app-shell {
+  border-color: rgba(255, 224, 203, 0.18);
+  background: linear-gradient(135deg, rgba(84, 45, 45, 0.82), rgba(36, 24, 24, 0.88));
+  box-shadow: 0 30px 100px rgba(13, 5, 7, 0.55), inset 0 1px rgba(255, 240, 223, 0.08);
+  backdrop-filter: blur(24px);
+}
+
+.nav-rail,
+.chat-sidebar,
+.details-panel {
+  background: rgba(54, 29, 32, 0.62);
+  backdrop-filter: blur(22px);
+}
+
+.conversation-panel {
+  background:
+    radial-gradient(ellipse at 54% 46%, rgba(132, 74, 57, 0.2), transparent 58%),
+    rgba(44, 27, 28, 0.7);
+}
+
+.conversation-header {
+  background: rgba(69, 40, 39, 0.52);
+  backdrop-filter: blur(18px);
+}
+
+.brand-mark {
+  background: linear-gradient(140deg, #f0c497, #bd6470);
+  box-shadow: 0 5px 24px rgba(193, 103, 105, 0.25);
+  color: #321a1d;
+}
+
+.rail-profile {
+  border-color: rgba(229, 177, 132, 0.55);
+  background: linear-gradient(145deg, #9e5860, #704634);
+  color: #fff1e5;
+}
+
+.rail-button.is-active {
+  background: rgba(229, 177, 132, 0.13);
+  color: #f0c497;
+}
+
+.rail-button.is-active::before {
+  background: #e5b184;
+}
+
+.new-chat-button,
+.chat-search,
+.composer,
+.profile-dialog input,
+.auth-field input,
+.dialog-search-input,
+.dialog-tabs {
+  border-color: rgba(255, 224, 203, 0.16);
+  background: rgba(35, 20, 22, 0.48);
+}
+
+.chat-search,
+.composer {
+  backdrop-filter: blur(14px);
+}
+
+.filter-tab.is-active,
+.dialog-tab.is-active {
+  border-color: rgba(229, 177, 132, 0.2);
+  background: rgba(171, 91, 91, 0.22);
+  color: #f0c497;
+}
+
+.text-button:hover,
+.header-actions .icon-button:first-child,
+.header-actions .icon-button:nth-child(2) {
+  color: #e9b38e;
+}
+
+.conversation-item.is-active {
+  border-color: rgba(220, 159, 126, 0.22);
+  background: linear-gradient(105deg, rgba(133, 63, 70, 0.28), rgba(126, 82, 57, 0.2));
+}
+
+.avatar-rose {
+  background: linear-gradient(145deg, #e1a99e, #98515d 62%, #462a2b);
+}
+
+.avatar-teal,
+.avatar-user {
+  background: linear-gradient(145deg, #e1b184, #a7664d 64%, #51352e);
+}
+
+.avatar-violet {
+  background: linear-gradient(145deg, #d6a6a8, #89596c 62%, #49303a);
+}
+
+.avatar-gold {
+  background: linear-gradient(145deg, #edc38e, #a86e4c 65%, #50352d);
+}
+
+.avatar-blue {
+  background: linear-gradient(145deg, #d3a18a, #8f5960 65%, #453037);
+}
+
+.avatar-group {
+  background: linear-gradient(145deg, #be806b, #74464a);
+}
+
+.message-bubble {
+  border-color: rgba(255, 227, 207, 0.1);
+  background: linear-gradient(145deg, rgba(116, 79, 63, 0.74), rgba(76, 49, 43, 0.78));
+  color: #f3e7dd;
+  backdrop-filter: blur(12px);
+}
+
+.message-row.is-sent .message-bubble {
+  border-color: rgba(234, 176, 142, 0.3);
+  background: linear-gradient(145deg, #8a4655, #754237);
+  color: #fff3e9;
+}
+
+.message-check,
+.composer:focus-within {
+  color: #f0c497;
+}
+
+.composer:focus-within,
+.auth-field input:focus,
+.dialog-search-input:focus {
+  border-color: rgba(229, 177, 132, 0.55);
+  box-shadow: 0 0 0 3px rgba(229, 177, 132, 0.1);
+}
+
+.send-button,
+.primary-button {
+  border-color: rgba(255, 220, 193, 0.22);
+  background: linear-gradient(135deg, #e0ad7d, #b85e69);
+  color: #2b1718;
+}
+
+.send-button:hover,
+.primary-button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.welcome-icon {
+  border-color: rgba(229, 177, 132, 0.25);
+  background: rgba(177, 93, 94, 0.16);
+  color: #efbd91;
+}
+
+.profile-dialog,
+.incoming-dialog,
+.call-window,
+.auth-card {
+  border-color: rgba(255, 226, 205, 0.2);
+  background: linear-gradient(145deg, rgba(81, 47, 45, 0.9), rgba(43, 28, 29, 0.94));
+  box-shadow: 0 25px 90px rgba(13, 5, 7, 0.5), inset 0 1px rgba(255, 239, 222, 0.08);
+  backdrop-filter: blur(24px);
+}
+
+.auth-screen {
+  background:
+    radial-gradient(ellipse at 50% 0, rgba(143, 57, 71, 0.3), transparent 56%),
+    rgba(25, 13, 17, 0.78);
+  backdrop-filter: blur(16px);
+}
+
+.auth-brand .brand-light,
+.auth-card > .eyebrow,
+.inline-button,
+.call-header .eyebrow,
+.incoming-content .eyebrow {
+  color: #efbd91;
+}
+
+.inline-button:hover {
+  color: #ffddbc;
+}
+
+.auth-field input:focus {
+  outline: 0;
+}
+
+.profile-dialog::backdrop,
+.incoming-dialog::backdrop {
+  background: rgba(25, 10, 15, 0.7);
+  backdrop-filter: blur(7px);
+}
+
+.call-overlay {
+  background: rgba(25, 10, 15, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+.call-video-stage {
+  background:
+    radial-gradient(ellipse at center, rgba(139, 75, 62, 0.28), transparent 64%),
+    #241719;
+}
+
+.toast {
+  border-color: rgba(255, 226, 205, 0.2);
+  background: rgba(76, 45, 43, 0.92);
+  color: #f7ece4;
+  backdrop-filter: blur(18px);
 
   .call-video-stage {
     min-height: min(55vh, 390px);

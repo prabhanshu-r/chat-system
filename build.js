@@ -19,6 +19,9 @@ try {
 if (parsedApiUrl.protocol !== "http:" && parsedApiUrl.protocol !== "https:") {
   throw new Error("PUBLIC_API_URL must use http:// or https://.");
 }
+if (process.env.VERCEL && parsedApiUrl.protocol !== "https:") {
+  throw new Error("PUBLIC_API_URL must use HTTPS when deploying to Vercel.");
+}
 
 fs.mkdirSync(output, { recursive: true });
 
